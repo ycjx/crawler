@@ -10,6 +10,7 @@ import http.cookiejar as cookielib
 from urllib.parse import quote_plus
 
 import rsa
+from requests.cookies import RequestsCookieJar
 
 agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) ' \
         'Chrome/75.0.3770.142 Safari/537.36'
@@ -24,12 +25,13 @@ login_url = 'https://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.19)
 class WeiboLogin(object):
 
     # 初始化数据
-    def __init__(self, user, password, cookie_path):
+    def __init__(self, user, password, cookie_path, uid):
         super(WeiboLogin, self).__init__()
         self.user = user
         self.password = password
         self.session = requests.Session()
         self.cookie_path = cookie_path
+        self.uid = uid
         # LWPCookieJar是python中管理cookie的工具，可以将cookie保存到文件，或者在文件中读取cookie数据到程序
         self.session.cookies = cookielib.LWPCookieJar(filename=self.cookie_path)
         self.index_url = "http://weibo.com/login.php"
@@ -107,7 +109,8 @@ class WeiboLogin(object):
             'from': '',
             'savestate': '7',
             'useticket': '1',
-            'pagerefer': "https://passport.weibo.com",
+            'pagerefer': "",
+            'qrcode_flag': 'false',
             'vsnf': '1',
             'su': su,
             'service': 'miniblog',
@@ -116,12 +119,11 @@ class WeiboLogin(object):
             'pwencode': 'rsa2',
             'rsakv': rsakv,
             'sp': password_secret,
-            'sr': '1366*768',
+            'sr': '1920*1080',
             'encoding': 'UTF-8',
-            'prelt': '115',
-            "cdult": "38",
-            'url': 'http://weibo.com/ajaxlogin.php?framelogin=1&callback=parent.sinaSSOController.feedBackUrlCallBack',
-            'returntype': 'TEXT'  # 这里是 TEXT 和 META 选择，具体含义待探索
+            'prelt': '193',
+            'url': 'https://weibo.com/ajaxlogin.php?framelogin=1&callback=parent.sinaSSOController.feedBackUrlCallBack',
+            'returntype': 'META'  # 这里是 TEXT 和 META 选择，具体含义待探索
         }
         return sever_data
 
@@ -130,21 +132,31 @@ class WeiboLogin(object):
         try:
             sever_data = self.pre_login()
             login_page = self.session.post(login_url, data=self.postdata, headers=headers)
-            ticket_js = login_page.json()
-            ticket = ticket_js["ticket"]
+            # ticket_js = login_page.json()
+            # ticket = ticket_js["ticket"]
         except Exception as e:
             sever_data = self.pre_login()
             pcid = sever_data["pcid"]
             self.get_cha(pcid)
             self.postdata['door'] = input(u"请输入验证码")
             login_page = self.session.post(login_url, data=self.postdata, headers=headers)
-            ticket_js = login_page.json()
-            ticket = ticket_js["ticket"]
+            # ticket__str = login_page.cookies._cookies
+            # ticket_js = login_page.json()
+            # ticket = ticket_js["ticket"]
         # 以下内容是 处理登录跳转链接
-        save_pa = r'==-(\d+)-'
-        ssosavestate = int(re.findall(save_pa, ticket)[0]) + 3600 * 7
+
+        # cookie_value = {}
+        # for key, value in self.session.cookies.ite
+        #     cookie_value[key] = value
+        # 获取uid的base64
+        cookie_value = {}
+        for key, value in login_page.cookies.items():
+            cookie_value[key] = value
+        tgc = cookie_value['tgc']
+        ticket = tgc.replace('TGT', 'ST')
+        ssosavestate = cookie_value['ALF']
         jump_ticket_params = {
-            "callback": "sinaSSOController.callbackLoginStatus",
+            "callback": "sinaSSOController.doCrossDomainCallBack",
             "ticket": ticket,
             "ssosavestate": str(ssosavestate),
             "client": "ssologin.js(v1.4.19)",
@@ -157,11 +169,8 @@ class WeiboLogin(object):
             "User-Agent": headers["User-Agent"]
         }
         jump_login = self.session.get(jump_url, params=jump_ticket_params, headers=jump_headers)
-        uuid = jump_login.text
-
-        uuid_pa = r'"uniqueid":"(.*?)"'
-        uuid_res = re.findall(uuid_pa, uuid, re.S)[0]
-        web_weibo_url = "http://weibo.com/%s/profile?topnav=1&wvr=6&is_all=1" % uuid_res
+        uid = self.uid
+        web_weibo_url = "http://weibo.com/%s/profile?topnav=1&wvr=6&is_all=1" % uid
         weibo_page = self.session.get(web_weibo_url, headers=headers)
 
         # print(weibo_page.content.decode("utf-8")
@@ -210,8 +219,9 @@ class WeiboLogin(object):
 
 
 if __name__ == '__main__':
-    username = "********"  # 用户名
-    password = "********"  # 密码
+    username = "18358580966"  # 用户名
+    password = "qwer1234"  # 密码
     cookie_path = "Cookie.txt"  # 保存cookie 的文件名称
-    weibo = WeiboLogin(username, password, cookie_path)
+    uid = '7266437571'
+    weibo = WeiboLogin(username, password, cookie_path,uid)
     weibo.login()
